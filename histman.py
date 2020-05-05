@@ -4,6 +4,7 @@ import os
 import re
 from datetime import date, datetime
 import shutil
+import gnupg
 
 @click.command()
 @click.option('--history-file', default=f"{os.environ['HOME']}/.zsh_history", help='Main ZSH history file')
@@ -11,6 +12,8 @@ import shutil
 @click.option('--frequency-days', default=7, help='Number of days between backups')
 @click.option('--backup', is_flag=True, help='Perform the backup if --frequency-days has passed since last backup.')
 @click.option('--backup-with-combine', is_flag=True, help='Same behavior as --backup, but runs --generate-combined if a backup occured.')
+@click.option('--encrypted-backup-dir', help='Directory to copy encrypted version on combined.zsh_history to.')
+@click.option('--gnupg-recipient', help='Recipient for GnuPG encrypted backup.')
 @click.option('--generate-combined', is_flag=True, help='Generate a combined.zsh_history file with all backed-up history.')
 @click.option('--show-live-and-combined', is_flag=True, help='Mimic history -l showing combined.zsh_history and --history_file')
 @click.argument('grep', nargs=-1)
@@ -21,6 +24,8 @@ def main(history_file, backup_dir, frequency_days, backup, backup_with_combine, 
         perform_backup(history_file, backup_dir, frequency_days, backup_with_combine)
     if generate_combined:
         combine_history(history_file, backup_dir)
+        if encrypted_backup_dir:
+            copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient)
     if show_live_and_combined:
         greps = []
         for cur_grep in grep:
@@ -76,6 +81,16 @@ def combine_history(history_file, backup_dir):
         for cmd in cmd_set:
             file.write(cmd)
 
+def copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient):
+    return
+    #with open(f"{backup_dir}/combined.zsh_history", 'rb') as file:
+    #    enc_filename = f"combined.zsh_history.{date.today().strftime('%Y-%m-%d')}.gpg"
+    #    click.echo(f"Encrypting {backup_dir}/combined.zsh_history to {encrypted_backup_dir}/{enc_filename}.")
+    #    gpg = gnupg.GPG()
+    #    status = gpg.encrypt_file(
+    #        f, recipients=[gnupg_recipient],
+    #        output=f"{encrypted_backup_dir}/{enc_filename}")
+
 
 def perform_backup(history_file, backup_dir, frequency_days, backup_with_combine):
     latest_file = sorted(glob.glob(f"{backup_dir}/*-*-*.zsh_history"))[-1]
@@ -92,3 +107,4 @@ def perform_backup(history_file, backup_dir, frequency_days, backup_with_combine
 
 if __name__ == '__main__':
     main()
+
