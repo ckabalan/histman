@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime
 import shutil
 import gnupg
+import gzip
 
 @click.command()
 @click.option('--history-file', default=f"{os.environ['HOME']}/.zsh_history", help='Main ZSH history file')
@@ -19,9 +20,11 @@ import gnupg
 @click.argument('grep', nargs=-1)
 
 
-def main(history_file, backup_dir, frequency_days, backup, backup_with_combine, generate_combined, show_live_and_combined, grep):
+def main(history_file, backup_dir, frequency_days, backup, backup_with_combine, encrypted_backup_dir, gnupg_recipient, generate_combined, show_live_and_combined, grep):
     if backup or backup_with_combine:
         perform_backup(history_file, backup_dir, frequency_days, backup_with_combine)
+        if encrypted_backup_dir:
+            copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient)
     if generate_combined:
         combine_history(history_file, backup_dir)
         if encrypted_backup_dir:
@@ -76,31 +79,50 @@ def combine_history(history_file, backup_dir):
         click.echo(f"Read {file_cmds} ({len(cmd_set) - total_cmds} new) commands from {history_file}.")
         total_cmds = len(cmd_set)
     cmd_set = sorted(cmd_set)
-    with open(f"{backup_dir}/combined.zsh_history", 'w') as file:
-        click.echo(f"Writing {backup_dir}/combined.zsh_history ({total_cmds} commands).")
+    dst = f"{backup_dir}/combined.zsh_history"
+    with open(dst, 'w') as file:
+        click.echo(f"Writing {dst} ({total_cmds} commands).")
         for cmd in cmd_set:
             file.write(cmd)
+        os.chmod(dst, 0o600)
 
 def copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient):
-    return
-    #with open(f"{backup_dir}/combined.zsh_history", 'rb') as file:
-    #    enc_filename = f"combined.zsh_history.{date.today().strftime('%Y-%m-%d')}.gpg"
-    #    click.echo(f"Encrypting {backup_dir}/combined.zsh_history to {encrypted_backup_dir}/{enc_filename}.")
-    #    gpg = gnupg.GPG()
-    #    status = gpg.encrypt_file(
-    #        f, recipients=[gnupg_recipient],
-    #        output=f"{encrypted_backup_dir}/{enc_filename}")
+    src_raw = f"{backup_dir}/combined.zsh_history"
+    dst_filename = f"combined.zsh_history.{date.today().strftime('%Y-%m-%d')}"
+    dst_gzip = f"{backup_dir}/{dst_filename}.gz"
+    dst_gpg = f"{encrypted_backup_dir}/{dst_filename}.gz.gpg"
+    with open(src_raw, 'rb') as f_in:
+        with gzip.open(dst_gzip, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    with open(dst_gzip, 'rb') as f:
+        click.echo(f"Encrypting {src_raw} to {dst_gpg}.")
+        gpg = gnupg.GPG()
+        status = gpg.encrypt_file(f, recipients=[gnupg_recipient], output=dst_gpg)
+    os.remove(dst_gzip)
+    click.echo(f"Done! You may decrypt {dst_gpg} with the GnuPG Key {gnupg_recipient}.")
+
 
 
 def perform_backup(history_file, backup_dir, frequency_days, backup_with_combine):
-    latest_file = sorted(glob.glob(f"{backup_dir}/*-*-*.zsh_history"))[-1]
-    filename = os.path.basename(latest_file)
-    filedate = datetime.strptime(filename, '%Y-%m-%d.zsh_history').date()
-    delta_days = (date.today() - filedate).days
-    if delta_days > frequency_days:
+    file_list = sorted(glob.glob(f"{backup_dir}/*-*-*.zsh_history"))
+    perform_backup = False
+    if len(file_list) == 0:
+        perform_backup = True
+        delta_days = -1
+    else:
+        latest_file = file_list[-1]
+        filename = os.path.basename(latest_file)
+        filedate = datetime.strptime(filename, '%Y-%m-%d.zsh_history').date()
+        delta_days = (date.today() - filedate).days
+        if delta_days > frequency_days:
+            perform_backup = True
+    if perform_backup:
         new_filename = f"{date.today().strftime('%Y-%m-%d')}.zsh_history"
         new_file = f"{backup_dir}/{new_filename}"
-        click.echo(f"Last ZSH history backup {delta_days}d ago. Backing up to {new_filename}.")
+        if delta_days == -1:
+            click.echo(f"ZSH history has never been backed up. Backing up to {new_filename}.")
+        else:
+            click.echo(f"Last ZSH history backup {delta_days}d ago. Backing up to {new_filename}.")
         shutil.copy2(history_file, new_file)
         if backup_with_combine:
             combine_history(history_file, backup_dir)
