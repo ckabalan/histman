@@ -22,13 +22,9 @@ import gzip
 
 def main(history_file, backup_dir, frequency_days, backup, backup_with_combine, encrypted_backup_dir, gnupg_recipient, generate_combined, show_live_and_combined, grep):
     if backup or backup_with_combine:
-        perform_backup(history_file, backup_dir, frequency_days, backup_with_combine)
-        if encrypted_backup_dir:
-            copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient)
+        perform_backup(history_file, backup_dir, frequency_days, backup_with_combine, encrypted_backup_dir, gnupg_recipient)
     if generate_combined:
         combine_history(history_file, backup_dir)
-        if encrypted_backup_dir:
-            copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient)
     if show_live_and_combined:
         greps = []
         for cur_grep in grep:
@@ -103,7 +99,7 @@ def copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient):
 
 
 
-def perform_backup(history_file, backup_dir, frequency_days, backup_with_combine):
+def perform_backup(history_file, backup_dir, frequency_days, backup_with_combine, encrypted_backup_dir, gnupg_recipient):
     file_list = sorted(glob.glob(f"{backup_dir}/*-*-*.zsh_history"))
     perform_backup = False
     if len(file_list) == 0:
@@ -126,6 +122,8 @@ def perform_backup(history_file, backup_dir, frequency_days, backup_with_combine
         shutil.copy2(history_file, new_file)
         if backup_with_combine:
             combine_history(history_file, backup_dir)
+        if encrypted_backup_dir:
+            copy_encrypted_history(backup_dir, encrypted_backup_dir, gnupg_recipient)
 
 if __name__ == '__main__':
     main()
